@@ -1,17 +1,19 @@
 #!/bin/bash
 
-if [[ -z "$TAILSCALE_AUTHKEY" ]]; then
+BUILD_DIR=$1
+#CACHE_DIR=$2
+ENV_DIR=$3
+BUILDPACK_DIR="$(dirname "$(dirname "$0")")"
+
+if [[ ! -e "$ENV_DIR/TAILSCALE_AUTHKEY" ]]; then
   echo "error: must set TAILSCALE_AUTHKEY variable in order to move forward"
   exit 1
 fi
-
-BUILD_DIR=$1
-#CACHE_DIR=$2
-BUILDPACK_DIR="$(dirname "$(dirname "$0")")"
 
 # load stack-appropriate versions of the tailscale binaries into /app/bin
 mkdir -p "$BUILD_DIR"/bin
 tar -xzvf "$BUILDPACK_DIR/$STACK.tgz" -C "$BUILD_DIR"/bin
 
 # Copy the tailscale start script to the .profile.d directory
+mkdir -p "$BUILD_DIR"/.profile.d
 cp "$BUILDPACK_DIR"/bin/start_tailscale.sh "$BUILD_DIR"/.profile.d/tailscale.sh
