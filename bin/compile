@@ -10,5 +10,5 @@ CACHE_DIR=$2
 BUILDPACK_DIR="$(dirname "$(dirname "$0")")"
 
 mkdir -p $BUILD_DIR/bin
-tar -xzvf "$STACK.tgz" -C "$BUILD_DIR/bin"
+tar -xzvf "$BUILDPACK_DIR/$STACK.tgz" -C "$BUILD_DIR/bin"
 mkdir -p $BUILD_DIR/var/run/tailscale $BUILD_DIR/var/cache/tailscale $BUILD_DIR/var/lib/tailscale
