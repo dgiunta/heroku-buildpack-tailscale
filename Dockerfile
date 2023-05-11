@@ -11,11 +11,11 @@ RUN apt update && apt install -yy curl
 RUN curl -fsSL https://tailscale.com/install.sh | sh
 
 FROM alpine:latest
-COPY --from=heroku_22 /usr/bin/tailscale ./Heroku-22/tailscale
-COPY --from=heroku_22 /usr/sbin/tailscaled ./Heroku-22/tailscaled
-COPY --from=heroku_20 /usr/bin/tailscale ./Heroku-20/tailscale
-COPY --from=heroku_20 /usr/sbin/tailscaled ./Heroku-20/tailscaled
-COPY --from=heroku_18 /usr/bin/tailscale ./Heroku-18/tailscale
-COPY --from=heroku_18 /usr/sbin/tailscaled ./Heroku-18/tailscaled
+COPY --from=heroku_22 /usr/bin/tailscale ./heroku-22/tailscale
+COPY --from=heroku_22 /usr/sbin/tailscaled ./heroku-22/tailscaled
+COPY --from=heroku_20 /usr/bin/tailscale ./heroku-20/tailscale
+COPY --from=heroku_20 /usr/sbin/tailscaled ./heroku-20/tailscaled
+COPY --from=heroku_18 /usr/bin/tailscale ./heroku-18/tailscale
+COPY --from=heroku_18 /usr/sbin/tailscaled ./heroku-18/tailscaled
 
 CMD ["sh"]

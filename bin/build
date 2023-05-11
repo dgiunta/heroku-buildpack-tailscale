@@ -1,12 +1,12 @@
 #!/bin/bash
 
-rm -rf Heroku-*.tgz
+rm -rf heroku-*.tgz
 
 docker build -t tailscale-buildpack:latest .
 docker run --rm -it -d --name=tailscale-buildpack-1 tailscale-buildpack:latest
 
 for v in 22 20 18; do
-  stack="Heroku-${v}"
+  stack="heroku-${v}"
   mkdir -p "./$stack"
 
   docker cp tailscale-buildpack-1:${stack}/tailscale ./${stack}/tailscale
