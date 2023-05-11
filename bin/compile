@@ -1,0 +1,14 @@
+#!/bin/bash
+
+if [[ ! -v "TAILSCALE_AUTHKEY" ]]; then
+  echo "error: must set TAILSCALE_AUTHKEY variable in order to move forward"
+  exit 1
+fi
+
+BUILD_DIR=$1
+CACHE_DIR=$2
+BUILDPACK_DIR="$(dirname "$(dirname "$0")")"
+
+mkdir -p $BUILD_DIR/bin
+tar -xzfv "$STACK.tgz" -C "$BUILD_DIR/bin"
+mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
