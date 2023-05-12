@@ -24,4 +24,9 @@ Other ENV vars that can be set:
 | `TAILSCALE_PROXY_PORT` | (default: 1055), any number | If you want / need to configure the internal port that tailscale uses for the SOCKS proxy it sets up. |
 | `TAILSCALE_HOSTNAME` | (default: heroku-app), short text | Text label used to identify your heroku dynos in your tailscale dashboard |
 
-On Dyno startup, if `DISABLE_TAILSCALE`
+On Dyno startup, if `DISABLE_TAILSCALE` is set to "true" (or any value
+other than false or unset), this buildpack will startup `tailscaled` in
+`userspace-networking` mode, which sets up a SOCKS5 proxy as well as an
+outbound-http-proxy-listener on localhost:1055. This address is set in
+the `ALL_PROXY`, `HTTP_PROXY` and `http_proxy` environment variables,
+which is how most HTTP libraries pick up the proxy by default.
