@@ -6,7 +6,7 @@ ENV_DIR=$3
 BUILDPACK_DIR="$(dirname "$(dirname "$0")")"
 
 function indent() {
-  sed -u 's/^/      /'
+  sed -u 's/^/       /'
 }
 
 if [[ ! -e "$ENV_DIR/TAILSCALE_AUTHKEY" ]]; then
