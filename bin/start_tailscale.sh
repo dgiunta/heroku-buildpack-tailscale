@@ -11,12 +11,13 @@ if [[ -v "DISABLE_TAILSCALE" && "$DISABLE_TAILSCALE" != "false" ]]; then
 fi
 
 TAILSCALE_PROXY_PORT=${TAILSCALE_PROXY_PORT:-1055}
+TAILSCALE_HOSTNAME=${TAILSCALE_HOSTNAME:-heroku-app}
 
 (
   /app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" 2>&1 | prefix
 ) &
 
-/app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname=heroku-app --accept-routes
+/app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$TAILSCALE_HOSTNAME" --accept-routes
 
 export ALL_PROXY=socks5://localhost:"$TAILSCALE_PROXY_PORT"
 export HTTP_PROXY=http://localhost:"$TAILSCALE_PROXY_PORT"

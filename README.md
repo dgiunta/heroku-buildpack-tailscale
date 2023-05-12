@@ -17,6 +17,11 @@ your app's ENV vars as `TAILSCALE_AUTHKEY`).
 After that you'll add this repo as an additional buildpack in your
 environment, and you should be all set.
 
-If for some reason you want to temporarily disable Tailscale in your
-applications, you can set the `DISABLE_TAILSCALE` ENV var to any value
-other than `false`
+Other ENV vars that can be set:
+| var name | values | description |
+|----------|--------|-----|
+| `DISABLE_TAILSCALE` | (default: unset), `false`, `true` | Prevents tailscale from starting on dyno boot. |
+| `TAILSCALE_PROXY_PORT` | (default: 1055), any number | If you want / need to configure the internal port that tailscale uses for the SOCKS proxy it sets up. |
+| `TAILSCALE_HOSTNAME` | (default: heroku-app), short text | Text label used to identify your heroku dynos in your tailscale dashboard |
+
+On Dyno startup, if `DISABLE_TAILSCALE`
