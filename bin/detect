@@ -1,5 +1,5 @@
 #!/bin/bash
 
 #build_dir=$1
-echo "Using Tailscale"
+echo "Tailscale"
 exit 0

@@ -1,12 +1,18 @@
 #!/bin/bash
 
+if [ -v "DISABLE_TAILSCALE" ]; then
+  exit 0
+fi
+
 TAILSCALE_PROXY_PORT=${TAILSCALE_PROXY_PORT:-1055}
 
 function prefix() {
   sed -u 's/^/[tailscale] /'
 }
 
-/app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" | prefix &
+(
+  /app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" 2>&1 | prefix
+) &
 
 /app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname=heroku-app --accept-routes
 
