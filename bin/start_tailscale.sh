@@ -10,12 +10,22 @@ if [[ -v "DISABLE_TAILSCALE" && "$DISABLE_TAILSCALE" != "false" ]]; then
   exit 0
 fi
 
+PIDFILE="./tmp/pids/tailscaled.pid"
+
+if [[ -f "$PIDFILE" ]];then
+  kill -9 "$(cat $PIDFILE)"
+  rm "$PIDFILE"
+fi
+
 TAILSCALE_PROXY_PORT=${TAILSCALE_PROXY_PORT:-1055}
 TAILSCALE_HOSTNAME=${TAILSCALE_HOSTNAME:-heroku-app}
 
 (
   /app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" 2>&1 | prefix
 ) &
+PID=$?
+echo "$PID" > "$PIDFILE"
+trap 'echo "Shutting down" | prefix; kill -9 $PID; rm $PIDFILE' SIGTERM
 
 /app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$TAILSCALE_HOSTNAME" --accept-routes
 
