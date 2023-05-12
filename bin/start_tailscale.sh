@@ -1,14 +1,16 @@
 #!/bin/bash
 
-if [ -v "DISABLE_TAILSCALE" ]; then
+function prefix() {
+  sed -u 's/^/[tailscale] /'
+}
+
+if [[ -v "DISABLE_TAILSCALE" && "$DISABLE_TAILSCALE" != "false" ]]; then
+  echo "DISABLE_TAILSCALE ENV var is set" | prefix
+  echo "--> Disabling tailscale" | prefix
   exit 0
 fi
 
 TAILSCALE_PROXY_PORT=${TAILSCALE_PROXY_PORT:-1055}
-
-function prefix() {
-  sed -u 's/^/[tailscale] /'
-}
 
 (
   /app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" 2>&1 | prefix
