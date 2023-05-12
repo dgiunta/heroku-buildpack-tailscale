@@ -2,7 +2,11 @@
 
 TAILSCALE_PROXY_PORT=${TAILSCALE_PROXY_PORT:-1055}
 
-/app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" &
+function prefix() {
+  sed -u 's/^/[tailscale] /'
+}
+
+/app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" | prefix &
 
 /app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname=heroku-app --accept-routes
 
