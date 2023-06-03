@@ -1,0 +1,15 @@
+#!/bin/bash
+
+function prefix() {
+  sed -u 's/^/[stuff] /'
+}
+
+function start() {
+  while true; do
+    echo "stdout"
+    echo "stderr" >&2
+    sleep 1
+  done
+}
+
+start 2>&1 | prefix | tee ./output.log >/dev/null

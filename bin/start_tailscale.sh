@@ -19,12 +19,15 @@ else
     rm "$PIDFILE"
   fi
 
-  (
-    /app/bin/tailscaled --tun=userspace-networking --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" 2>&1 | prefix
-  ) &
-  PID=$!
-  echo "$PID" > "$PIDFILE"
-  trap 'echo "Shutting down" | prefix; kill -9 $PID; rm $PIDFILE' SIGTERM
+  /app/bin/tailscaled \
+    --tun=userspace-networking \
+    --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" \
+    --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" \
+    --verbose=0 \
+  2>&1 | prefix | tee /var/log/tailscaled.log >/dev/null &
+
+  TAILSCALE_PID=$(ps -C tailscaled --no-headers --format pid)
+  echo "$TAILSCALE_PID" > $PIDFILE
 
   /app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$TAILSCALE_HOSTNAME" --accept-routes
 
