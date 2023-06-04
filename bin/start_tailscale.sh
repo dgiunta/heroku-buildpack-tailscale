@@ -4,6 +4,9 @@ function prefix() {
   sed -u 's/^/[tailscale] /'
 }
 
+function on_exit() {
+}
+
 if [[ -v "DISABLE_TAILSCALE" && "$DISABLE_TAILSCALE" != "false" ]]; then
   echo "DISABLE_TAILSCALE ENV var is set" | prefix
   echo "--> Disabling tailscale" | prefix
@@ -28,6 +31,8 @@ else
 
   TAILSCALE_PID=$(ps -C tailscaled --no-headers --format pid)
   echo "$TAILSCALE_PID" > $PIDFILE
+
+  trap 'echo "Shutting down" | prefix; kill -9 $PID; rm $PIDFILE' SIGTERM
 
   /app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$TAILSCALE_HOSTNAME" --accept-routes
 
