@@ -4,9 +4,6 @@ function prefix() {
   sed -u 's/^/[tailscale] /'
 }
 
-function on_exit() {
-}
-
 if [[ -v "DISABLE_TAILSCALE" && "$DISABLE_TAILSCALE" != "false" ]]; then
   echo "DISABLE_TAILSCALE ENV var is set" | prefix
   echo "--> Disabling tailscale" | prefix
@@ -27,7 +24,7 @@ else
     --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" \
     --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" \
     --verbose=0 \
-  2>&1 | prefix | tee /var/log/tailscaled.log >/dev/null &
+  2>&1 | prefix >/dev/null &
 
   TAILSCALE_PID=$(ps -C tailscaled --no-headers --format pid)
   echo "$TAILSCALE_PID" > $PIDFILE
