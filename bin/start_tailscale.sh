@@ -32,7 +32,7 @@ else
   TAILSCALE_PID=$(ps -C tailscaled --no-headers --format pid)
   echo "$TAILSCALE_PID" > $PIDFILE
 
-  trap 'echo "Shutting down" | prefix; kill -9 $PID; rm $PIDFILE' SIGTERM
+  trap 'echo "Shutting down" | prefix; kill -9 $TAILSCALE_PID; rm $PIDFILE' SIGTERM
 
   /app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$TAILSCALE_HOSTNAME" --accept-routes
 
