@@ -19,6 +19,7 @@ else
     rm "$PIDFILE"
   fi
 
+  echo "Starting tailscaled" | prefix
   /app/bin/tailscaled \
     --tun=userspace-networking \
     --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" \
@@ -31,7 +32,10 @@ else
 
   trap 'echo "Shutting down" | prefix; kill -9 $TAILSCALE_PID; rm $PIDFILE' SIGTERM
 
-  /app/bin/tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$TAILSCALE_HOSTNAME" --accept-routes
+  # TAILSCALE_EXTRA_ARGS can be used to pass additional arguments to the `tailscale up` command
+  # If you're using an OAUTH token for your authkey, you can use this variable to pass --advertise-tags="tag:heroku-dyno".
+  # Another use for this variable could be to pass --accept-routes so that your heroku dynos can accept routes from subnet routers.
+  bash -c "/app/bin/tailscale up --authkey=$TAILSCALE_AUTHKEY --hostname=$TAILSCALE_HOSTNAME $TAILSCALE_EXTRA_ARGS"
 
   export ALL_PROXY=socks5://localhost:"$TAILSCALE_PROXY_PORT"
   export HTTP_PROXY=http://localhost:"$TAILSCALE_PROXY_PORT"

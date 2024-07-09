@@ -23,6 +23,7 @@ Other ENV vars that can be set:
 | `DISABLE_TAILSCALE` | (default: unset), `false`, `true` | Prevents tailscale from starting on dyno boot. |
 | `TAILSCALE_PROXY_PORT` | (default: 1055), any number | If you want / need to configure the internal port that tailscale uses for the SOCKS proxy it sets up. |
 | `TAILSCALE_HOSTNAME` | (default: heroku-app), short text | Text label used to identify your heroku dynos in your tailscale dashboard |
+| `TAILSCALE_EXTRA_ARGS` | (default: unset), short text | Additional arguments to the `tailscale up` command. Useful for passing `--accept-routes` or `--advertise-tags="tag:heroku-dyno"` if you're using an OAuth token vs. a personal access token |
 
 On Dyno startup, if `DISABLE_TAILSCALE` is set to "true" (or any value
 other than false or unset), this buildpack will startup `tailscaled` in
