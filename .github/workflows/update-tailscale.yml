@@ -1,0 +1,28 @@
+name: Update Tailscale
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 1 * *' # first day of the month at 4am
+
+jobs:
+  update:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Update Tailscale
+        run: ./bin/build
+
+      - name: Add and commit changed files
+        run: |
+          git config --local user.email "github-actions@users.noreply.github.com"
+          git config --local user.name "github-actions"
+          git checkout -b "update-tailscale-$(date +%F)"
+          git add .
+          git commit -m "Updating tailscale versions"
+          git push origin HEAD
+
+      - name: Create pull request
+        run: gh pr create --fill
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
