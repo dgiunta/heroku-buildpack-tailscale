@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# Usage:
+# [STACK=22] ./bin/test [env-key=value env-key=value ...]
+#
+# STACK must be set as an ENV var, rather than argument
+# Any other buildpack settings should be passed as arguments to this script.
+#
+# STACK=20 ./bin/test TAILSCALE_AUTHKEY=12345 DISABLE_TAILSCALE=true
+#
+# STACK defaults to the latest stack version this buildpack supports
+
+STACK=${STACK:-22}
+
+# if there's more arguments, then insert "-e" flags in between each variable
+# so it can be passed directly to docker run
+if [[ ${#@} -gt 0 ]]; then
+  envs="-e $(echo "$*" | sed -e 's/ / -e /g')"
+fi
+
+# Pick the correct version of Ubuntu for the heroku stack
+img="ubuntu:$STACK.04"
+
+# Start a docker container that will be the context that we run all of our tests.
+# Note that we're mounting our current buildpack directory to a directory inside
+# the container at /buildpack. The return value of the `docker run` command is the
+# id of the started container which we save so that we can use it in subsequent
+# docker commands.
+cmd="docker run --rm -dt -v .:/buildpack $envs -e STACK=heroku-$STACK $img bash"
+id=$(exec $cmd)
+
+# Create some buildpack-required directories.
+# /env will be the directory where we store all of our env vars in the next section
+# /app will be where we will store our running "app".
+docker exec "$id" mkdir -p /env /app
+
+# Heroku buildpacks transport their env vars as files in an env directory.
+# We need to take any env vars that are passed as arguments to this script and
+# write them out to files that get passed to ./bin/compile
+for e in $@; do
+  k="$(echo "$e" | sed -e 's/=.*//')"
+  v="$(echo "$e" | sed -e 's/.*=//')"
+
+  docker exec "$id" bash -c "echo $v > /env/$k"
+done
+
+# These two steps replicate what happens when Heroku is loading a buildpack
+# during their build phase.
+docker exec "$id" bash /buildpack/bin/detect /app
+docker exec "$id" bash /buildpack/bin/compile /app /_cache /env
+
+# In this buildpack's compile stage, we write out a file for starting tailscale
+# when new containers start up. We'll just call that file directly here.
+docker exec "$id" bash /app/.profile.d/tailscale.sh
+
+# This is where we would run our tests. For the moment I'm just running `tailscale status`.
+docker exec "$id" /app/bin/tailscale status
+
+# Stop and kill the container. You can comment this line out to leave the container running
+# so that you can attach to it and poke around to troubleshoot things if need be. To attach to
+# the container, you'll need to get the container id or name for yourself with `docker ps`, and
+# then execute something like `docker exec -it <id-or-name> bash` which will get you to a bash
+# prompt inside the running container. Make sure you run `docker stop <id-or-name>` to clean
+# up once you're done.
+docker stop "$id"
