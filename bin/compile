@@ -1,28 +1,95 @@
 #!/bin/bash
 
+set -e
+
 BUILD_DIR=$1
-#CACHE_DIR=$2
+CACHE_DIR=$2
 ENV_DIR=$3
 BUILDPACK_DIR="$(dirname "$(dirname "$0")")"
+
+function main() {
+  export_env_dir "$ENV_DIR"
+
+  # Get latest stable version from the tailscale pkgs page
+  TAILSCALE_VERSION=${TAILSCALE_VERSION:-$(curl --silent https://pkgs.tailscale.com/stable/ | \
+    awk '/option/ {gsub("<[^>]+>", ""); print $1}' | \
+    grep -v latest | sort -r | head -1)}
+
+  # if we have a cached copy of the tailscale executable...
+  if [ -f "$CACHE_DIR/tailscale" ]; then
+    cached_version=$("$CACHE_DIR/tailscale" --version | head -1)
+
+    # ...and the cached version matches the requested version.
+    if [ "$cached_version" = "$TAILSCALE_VERSION" ]; then
+      echo "Installing Tailscale v$TAILSCALE_VERSION from cache" | major
+      copy_binaries_from_cache
+    fi
+  fi
+
+  if [ ! -f "$BUILD_DIR/bin/tailscale" ]; then
+    echo "Installing Tailscale v$TAILSCALE_VERSION" | major
+    install_from_apt
+    copy_binaries_to_cache
+    copy_binaries_from_cache
+  fi
+
+  copy_start_script
+  echo "Tailscale installed" | major
+  echo
+}
 
 function indent() {
   sed -u 's/^/       /'
 }
 
-if [[ ! -e "$ENV_DIR/TAILSCALE_AUTHKEY" ]]; then
-  echo "error: must set TAILSCALE_AUTHKEY variable in order to move forward"
-  exit 1
-fi
+function major() {
+  sed -u 's/^/-----> /'
+}
 
-# load stack-appropriate versions of the tailscale binaries into /app/bin
-echo "Installing tailscale binaries" | indent
-mkdir -p "$BUILD_DIR"/bin
-tar -xzf "$BUILDPACK_DIR/$STACK.tgz" -C "$BUILD_DIR"/bin
+export_env_dir() {
+  env_dir=$1
+  acceptlist_regex=${2:-''}
+  denylist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
+  if [ -d "$env_dir" ]; then
+    # shellcheck disable=SC2045
+    for e in $(ls $env_dir); do
+      echo "$e" | grep -E "$acceptlist_regex" | grep -qvE "$denylist_regex" &&
+      export "$e=$(cat $env_dir/$e)"
+      :
+    done
+  fi
+}
 
-# Copy the tailscale start script to the .profile.d directory
-echo "Copying tailscale start script" | indent
-mkdir -p "$BUILD_DIR"/.profile.d
-cp "$BUILDPACK_DIR"/bin/start_tailscale.sh "$BUILD_DIR"/.profile.d/tailscale.sh
+function copy_binaries_from_cache() {
+  echo "Copying tailscale binaries to $BUILD_DIR/bin" | indent
+  mkdir -p "$BUILD_DIR"/bin
+  cp "$CACHE_DIR/tailscale" "$BUILD_DIR/bin/tailscale"
+  cp "$CACHE_DIR/tailscaled" "$BUILD_DIR/bin/tailscaled"
+}
 
-echo "-----> Tailscale installed"
-echo
+function copy_binaries_to_cache() {
+  cp /usr/bin/tailscale "$CACHE_DIR/tailscale"
+  cp /usr/sbin/tailscaled "$CACHE_DIR/tailscaled"
+}
+
+function install_from_apt() {
+  # load the VERSION_CODENAME ENV var from the OS.
+  . /etc/os-release
+
+  # shellcheck disable=SC2069
+  {
+    curl --silent "https://pkgs.tailscale.com/stable/ubuntu/$VERSION_CODENAME.noarmor.gpg" | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+    curl --silent "https://pkgs.tailscale.com/stable/ubuntu/$VERSION_CODENAME.tailscale-keyring.list" | tee /etc/apt/sources.list.d/tailscale.list
+
+    apt-get update
+    apt-get install -y tailscale="$TAILSCALE_VERSION" tailscale-archive-keyring
+  } 2>&1 >/dev/null
+}
+
+function copy_start_script() {
+  echo "Copying tailscale start script" | indent
+  mkdir -p "$BUILD_DIR"/.profile.d
+  cp "$BUILDPACK_DIR"/bin/start_tailscale.sh "$BUILD_DIR"/.profile.d/tailscale.sh
+}
+
+main

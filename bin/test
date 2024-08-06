@@ -1,0 +1,172 @@
+#!/bin/bash
+
+# Usage:
+# [STACK=22 TAILSCALE_AUTHKEY=tskey-asdlfkjasdf ENV-KEY=value ENV-KEY=value] ./bin/test [-d -C]
+#
+# Flags:
+# -d - Debug mode. In Debug mode, the script will drop you into a bash shell
+#      inside the running container so that you can inspect the Environment
+#      before it is stopped.
+#
+# -C - Reset Build Cache. By default, the test script simulates the heroku
+#      build cache. Passing -C resets that cache.
+#
+# Environment Variables:
+# - STACK defaults to the latest stack version this buildpack supports
+# - TAILSCALE_AUTHKEY is the only required argument
+# 
+# Any other buildpack-related ENV vars can be set along with the invocation of the test script.
+# - TAILSCALE_VERSION
+# - TAILSCALE_EXTRA_ARGS
+# - TAILSCALE_HOSTNAME
+# - TAILSCALE_PROXY_PORT
+# - DISABLE_TAILSCALE
+#
+# Examples:
+# STACK=20 TAILSCALE_AUTHKEY=12345 DISABLE_TAILSCALE=true ./bin/test
+# STACK=22 TAILSCALE_AUTHKEY=12345 TAILSCALE_PROXY_PORT=1011 ./bin/test
+
+function announce() {
+  echo "$1" | tr '[:lower]' '[:upper]' | awk '{print "\n" $0; gsub(".", "="); print $0}'
+}
+
+args=$(getopt dC "$@")
+# shellcheck disable=SC2181
+if [[ $? -ne 0 ]]; then
+  exit 1;
+fi
+
+DEBUG=0
+NOCACHE=0;
+
+eval set -- "$args"
+
+while :; do
+  case "$1" in
+    -d) # open a debug session inside the container
+      DEBUG=1;
+      shift;
+      ;;
+    -C) # delete the cache folder
+      NOCACHE=1;
+      shift;
+      ;;
+    --)
+      shift;
+      break
+      ;;
+  esac
+done
+
+set -eo pipefail
+
+[ -z "$TAILSCALE_AUTHKEY" ] && echo "No TAILSCALE_AUTHKEY set" && exit 1
+
+STACK=${STACK:-22}
+APP_DIR="./tmp/app"
+ENV_DIR="./tmp/env"
+
+# get latest tailscale version if one hasn't been set explicitly
+tailscale_version=${TAILSCALE_VERSION:-$(curl --silent https://pkgs.tailscale.com/stable/ | \
+  awk '/option/ {gsub("<[^>]+>", ""); print $1}' | \
+  grep -v latest | sort -r | head -1)}
+
+# set the cache dir for our current stack and tailscale version
+CACHE_DIR="./tmp/cache/heroku-$STACK/${tailscale_version:-latest}"
+
+# setup local directories that will be mounted into the container as build context
+[ "$NOCACHE" -gt 0 ] && rm -rf "$CACHE_DIR"
+rm -rf "$APP_DIR" "$ENV_DIR"
+mkdir -p "$CACHE_DIR" "$APP_DIR" "$ENV_DIR"
+
+# Create a temporary env file to pass to the docker run command
+# The envfile should only contain variables that have been explicitly set when calling this script
+envfile=$(mktemp)
+echo "STACK=heroku-$STACK" >> "$envfile"
+
+# This is the full list of supported ENV vars for this buildpack.
+vars=$(cat<<-EOVARS
+TAILSCALE_AUTHKEY
+TAILSCALE_VERSION
+TAILSCALE_EXTRA_ARGS
+TAILSCALE_HOSTNAME
+TAILSCALE_PROXY_PORT
+DISABLE_TAILSCALE
+EOVARS
+)
+
+# For each of the above vars..
+for var in $vars; do
+  # if the var is set...
+  if [[ -n "${!var}" ]]; then
+    # ...add it to the envfile...
+    echo "$var=${!var}" >> "$envfile"
+
+    # ...add write it out as a file in the ENV dir
+    echo "${!var}" > "$ENV_DIR/$var"
+  fi
+done
+
+announce "Setting up environment"
+
+# Start a docker container that will be the context that we run all of our tests.
+# Note that we're mounting our current buildpack directory to a directory inside
+# the container at /buildpack. The return value of the `docker run` command is the
+# id of the started container which we save so that we can use it in subsequent
+# docker commands.
+id=$(docker run \
+  --rm -dit \
+  --user=root \
+  --platform=linux/amd64 \
+  -v .:/buildpack \
+  -v ./tmp/env:/env \
+  -v ./tmp/app:/app \
+  -v "$CACHE_DIR":/cache \
+  -e DEBIAN_FRONTEND="noninteractive" \
+  --env-file="$envfile" \
+  "heroku/heroku:$STACK" bash)
+
+function cleanup() {
+  rm "$envfile"
+  docker exec "$id" /app/bin/tailscale logout # ensures we don't leave machines hanging around in our tailscale account
+  docker kill "$id" >/dev/null # kills the container
+  rm -rf ./tmp/{env,app} # cleans up our tmp directories
+}
+
+trap cleanup EXIT
+
+# Install curl in the container if it's not there already.
+# This is only really necessary if we're using the base ubuntu image, rather than heroku/heroku
+docker exec "$id" bash -c "if ! which curl >/dev/null; then apt-get update -y 2>&1>/dev/null && apt-get install -yy curl 2>&1>/dev/null; fi"
+
+# These two steps replicate what happens when Heroku is loading a buildpack
+# during their build phase.
+announce "Build Phase"
+docker exec "$id" bash /buildpack/bin/detect /app
+docker exec "$id" bash /buildpack/bin/compile /app /cache /env
+
+# In this buildpack's compile stage, we write out a file for starting tailscale
+# when new containers start up. We'll just call that file directly here.
+announce "Run Phase"
+docker exec "$id" bash /app/.profile.d/tailscale.sh
+
+# This is where we run our tests.
+# Currently we write out the tailscale version, and the result of `tailscale status` filtered
+# to the IP of the currently running container.
+announce "Test Output"
+script=$(cat <<EOF
+  ts_version=\$(/app/bin/tailscale --version | head -1)
+  ip=\$(/app/bin/tailscale ip | head -1)
+  status=\$(/app/bin/tailscale status | grep \$ip)
+
+echo "Tailscale Version: \$ts_version"
+echo "Tailscale Status: \$status"
+EOF
+)
+docker exec "$id" bash -c "$script"
+
+if [ $DEBUG -gt 0 ]; then
+  echo
+  echo "[DEBUG] Logging you into running container..."
+  docker exec -it "$id" bash
+fi
