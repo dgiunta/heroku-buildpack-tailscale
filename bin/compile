@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -o pipefail
 
 BUILD_DIR=$1
 CACHE_DIR=$2
@@ -11,9 +12,7 @@ function main() {
   export_env_dir "$ENV_DIR"
 
   # Get latest stable version from the tailscale pkgs page
-  TAILSCALE_VERSION=${TAILSCALE_VERSION:-$(curl --silent https://pkgs.tailscale.com/stable/ | \
-    awk '/option/ {gsub("<[^>]+>", ""); print $1}' | \
-    grep -v latest | sort -r | head -1)}
+  TAILSCALE_VERSION=${TAILSCALE_VERSION:-$("$BUILDPACK_DIR"/bin/tailscale_versions.sh | sort -r | head -1)}
 
   # if we have a cached copy of the tailscale executable...
   if [ -f "$CACHE_DIR/tailscale" ]; then
@@ -62,28 +61,68 @@ export_env_dir() {
 
 function copy_binaries_from_cache() {
   echo "Copying tailscale binaries to $BUILD_DIR/bin" | indent
-  mkdir -p "$BUILD_DIR"/bin
+  mkdir -p "$BUILD_DIR/bin"
   cp "$CACHE_DIR/tailscale" "$BUILD_DIR/bin/tailscale"
   cp "$CACHE_DIR/tailscaled" "$BUILD_DIR/bin/tailscaled"
 }
 
 function copy_binaries_to_cache() {
-  cp /usr/bin/tailscale "$CACHE_DIR/tailscale"
-  cp /usr/sbin/tailscaled "$CACHE_DIR/tailscaled"
+  cp "$APT_CACHE_DIR/tailscale/usr/bin/tailscale" "$CACHE_DIR/tailscale"
+  cp "$APT_CACHE_DIR/tailscale/usr/sbin/tailscaled" "$CACHE_DIR/tailscaled"
 }
 
 function install_from_apt() {
   # load the VERSION_CODENAME ENV var from the OS.
   . /etc/os-release
 
+  APT_CACHE_DIR="$HOME/apt/cache"
+  APT_STATE_DIR="$HOME/apt/state"
+  APT_KEYRINGS_DIR="$HOME/apt/keyrings"
+  APT_SOURCELIST_DIR="$HOME/apt/sources"   # place custom sources.list here
+  APT_SOURCEPARTS_DIR="$APT_SOURCELIST_DIR/sources.list.d"
+  APT_SOURCES="$APT_SOURCELIST_DIR/sources.list"
+
+  rm -rf "${CACHE_DIR}/apt"
+  mkdir -p "$CACHE_DIR/apt"
+  mkdir -p "$APT_CACHE_DIR"
+  mkdir -p "$APT_CACHE_DIR/archives/partial"
+  mkdir -p "$APT_STATE_DIR/lists/partial"
+  mkdir -p "$APT_SOURCELIST_DIR"   # make dir for sources
+
+  if [ ! "$(whoami)" = "heroku" ]; then
+    {
+      chown -Rv _apt:"$(whoami)" "$APT_CACHE_DIR/archives/partial/"
+      chmod -Rv 700 "$APT_CACHE_DIR/archives/partial/"
+    } 2>&1 | indent
+  fi
+
+  cp -R "/usr/share/keyrings" "$APT_KEYRINGS_DIR"
+
+  cat "/etc/apt/sources.list" > "$APT_SOURCES"    # no cp here
+  cp -R "/etc/apt/sources.list.d" "$APT_SOURCEPARTS_DIR"
+
+  APT_OPTIONS=("-o" "debug::nolocking=true" "-o" "dir::cache=$APT_CACHE_DIR" "-o" "dir::state=$APT_STATE_DIR")
+  # Override the use of /etc/apt/sources.list (sourcelist) and /etc/apt/sources.list.d/* (sourceparts).
+  APT_OPTIONS+=("-o" "dir::etc::sourcelist=$APT_SOURCES" "-o" "dir::etc::sourceparts=$APT_SOURCEPARTS_DIR")
+  APT_OPTIONS+=("--allow-downgrades" "--allow-remove-essential" "--allow-change-held-packages")
+
   # shellcheck disable=SC2069
   {
-    curl --silent "https://pkgs.tailscale.com/stable/ubuntu/$VERSION_CODENAME.noarmor.gpg" | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
-    curl --silent "https://pkgs.tailscale.com/stable/ubuntu/$VERSION_CODENAME.tailscale-keyring.list" | tee /etc/apt/sources.list.d/tailscale.list
+    TS_KEYFILE="$APT_KEYRINGS_DIR/tailscale-archive-keyring.gpg"
+    TS_SOURCEFILE="$APT_SOURCEPARTS_DIR/tailscale.list"
+    curl --silent "https://pkgs.tailscale.com/stable/ubuntu/$VERSION_CODENAME.noarmor.gpg" > "$TS_KEYFILE"
+    curl --silent "https://pkgs.tailscale.com/stable/ubuntu/$VERSION_CODENAME.tailscale-keyring.list" > "$TS_SOURCEFILE-raw"
 
-    apt-get update
-    apt-get install -y tailscale="$TAILSCALE_VERSION" tailscale-archive-keyring
-  } 2>&1 >/dev/null
+    # deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main
+    awk "{sub(\"signed-by=[^\]]+\", \"signed-by=$TS_KEYFILE\"); print}" "$TS_SOURCEFILE-raw" > "$TS_SOURCEFILE"
+    rm "$TS_SOURCEFILE-raw"
+
+    apt-get "${APT_OPTIONS[@]}" update
+    apt-get "${APT_OPTIONS[@]}" -y -d install tailscale="$TAILSCALE_VERSION" tailscale-archive-keyring
+    for DEB in "$APT_CACHE_DIR/archives/tailscale"*.deb; do
+      dpkg -x "$DEB" "$APT_CACHE_DIR/tailscale/"
+    done
+  } 2>&1 | indent
 }
 
 function copy_start_script() {

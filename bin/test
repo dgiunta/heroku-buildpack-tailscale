@@ -27,7 +27,7 @@
 # STACK=22 TAILSCALE_AUTHKEY=12345 TAILSCALE_PROXY_PORT=1011 ./bin/test
 
 function announce() {
-  echo "$1" | tr '[:lower]' '[:upper]' | awk '{print "\n" $0; gsub(".", "="); print $0}'
+  echo "$1" | awk '{print "\n" $0; gsub(".", "="); print $0}'
 }
 
 args=$(getopt dC "$@")
@@ -67,15 +67,17 @@ APP_DIR="./tmp/app"
 ENV_DIR="./tmp/env"
 
 # get latest tailscale version if one hasn't been set explicitly
-tailscale_version=${TAILSCALE_VERSION:-$(curl --silent https://pkgs.tailscale.com/stable/ | \
-  awk '/option/ {gsub("<[^>]+>", ""); print $1}' | \
-  grep -v latest | sort -r | head -1)}
-
+# note that I'm changing this variable name to lower case so that the uppercase
+# version does not get overwritten. This is so that below we don't end up injecting
+# this environment variable into the build environment unless it's been set externally.
+# This is so that we can test what happens in the build environment when TAILSCALE_VERSION
+# is unset.
+tailscale_version=${TAILSCALE_VERSION:-$(./bin/tailscale_versions.sh | sort -r | head -1)}
 # set the cache dir for our current stack and tailscale version
 CACHE_DIR="./tmp/cache/heroku-$STACK/${tailscale_version:-latest}"
 
 # setup local directories that will be mounted into the container as build context
-[ "$NOCACHE" -gt 0 ] && rm -rf "$CACHE_DIR"
+[ "$NOCACHE" -gt 0 ] && announce "Clearing cache" && rm -rf "$CACHE_DIR"
 rm -rf "$APP_DIR" "$ENV_DIR"
 mkdir -p "$CACHE_DIR" "$APP_DIR" "$ENV_DIR"
 
@@ -116,7 +118,6 @@ announce "Setting up environment"
 # docker commands.
 id=$(docker run \
   --rm -dit \
-  --user=root \
   --platform=linux/amd64 \
   -v .:/buildpack \
   -v ./tmp/env:/env \
@@ -127,13 +128,18 @@ id=$(docker run \
   "heroku/heroku:$STACK" bash)
 
 function cleanup() {
+  announce "Cleaning up"
   rm "$envfile"
   docker exec "$id" /app/bin/tailscale logout # ensures we don't leave machines hanging around in our tailscale account
   docker kill "$id" >/dev/null # kills the container
   rm -rf ./tmp/{env,app} # cleans up our tmp directories
+  echo "Done."
 }
 
+# run cleanup no matter how this script is exited
 trap cleanup EXIT
+trap cleanup SIGINT
+trap cleanup SIGTERM
 
 # Install curl in the container if it's not there already.
 # This is only really necessary if we're using the base ubuntu image, rather than heroku/heroku
@@ -155,7 +161,7 @@ docker exec "$id" bash /app/.profile.d/tailscale.sh
 # to the IP of the currently running container.
 announce "Test Output"
 script=$(cat <<EOF
-  ts_version=\$(/app/bin/tailscale --version | head -1)
+  ts_version=\$(/app/bin/tailscale version | head -1)
   ip=\$(/app/bin/tailscale ip | head -1)
   status=\$(/app/bin/tailscale status | grep \$ip)
 
