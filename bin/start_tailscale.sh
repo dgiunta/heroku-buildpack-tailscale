@@ -43,7 +43,7 @@ else
   mv /app/bin/tailscale /app/bin/tailscale-orig
   cat <<-EOF > /app/bin/tailscale
 #!/bin/bash
-/app/bin/tailscale-orig --socket=tmp/tailscaled.sock "\$@"
+/app/bin/tailscale-orig --socket=/tmp/tailscaled.sock "\$@"
 EOF
   chmod +x /app/bin/tailscale
 
