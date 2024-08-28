@@ -90,10 +90,7 @@ function install_from_apt() {
   mkdir -p "$APT_SOURCELIST_DIR"   # make dir for sources
 
   if [ ! "$(whoami)" = "heroku" ]; then
-    {
-      chown -Rv _apt:"$(whoami)" "$APT_CACHE_DIR/archives/partial/"
-      chmod -Rv 700 "$APT_CACHE_DIR/archives/partial/"
-    } 2>&1 | indent
+    chmod -Rv 777 "$APT_CACHE_DIR/archives/partial/" 2>&1 | indent
   fi
 
   cp -R "/usr/share/keyrings" "$APT_KEYRINGS_DIR"
