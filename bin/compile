@@ -91,8 +91,9 @@ function install_from_apt() {
 
   if [ ! "$(whoami)" = "heroku" ]; then
     {
-      chown -Rv _apt:"$(whoami)" "$APT_CACHE_DIR/archives/partial/"
-      chmod -Rv 700 "$APT_CACHE_DIR/archives/partial/"
+      # chown -Rv _apt:root "$APT_CACHE_DIR/archives/partial/"
+      chmod -Rv 777 "$APT_CACHE_DIR/archives/partial/"
+      # chmod -Rv 700 "$APT_CACHE_DIR/archives/partial/"
     } 2>&1 | indent
   fi
 
