@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 function prefix() {
   sed -u 's/^/[tailscale] /'
 }
@@ -24,6 +26,8 @@ else
     --tun=userspace-networking \
     --socks5-server=localhost:"$TAILSCALE_PROXY_PORT" \
     --outbound-http-proxy-listen=localhost:"$TAILSCALE_PROXY_PORT" \
+    --socket=/tmp/tailscaled.sock \
+    --state=/tmp/tailscale \
     --verbose=0 \
   2>&1 | prefix >/dev/null &
 
@@ -32,9 +36,18 @@ else
 
   trap 'echo "Shutting down" | prefix; kill -9 $TAILSCALE_PID; rm $PIDFILE' SIGTERM
 
-  # TAILSCALE_EXTRA_ARGS can be used to pass additional arguments to the `tailscale up` command
-  # If you're using an OAUTH token for your authkey, you can use this variable to pass --advertise-tags="tag:heroku-dyno".
-  # Another use for this variable could be to pass --accept-routes so that your heroku dynos can accept routes from subnet routers.
+  # Unfortunately, tailscale does not have an ENV var or global setting mechanism
+  # that we can use to configure the --socket setting for the tailscale command. 
+  # As a band-aid for this, the following creates a relatively simple alias that
+  # adds the --socket setting by default. This means users of this buildpack won't
+  # need to have to remember to mention this socket file in their invokations.
+  mv /app/bin/tailscale /app/bin/tailscale-orig
+  cat <<-EOF > /app/bin/tailscale
+#!/bin/bash
+/app/bin/tailscale-orig --socket=/tmp/tailscaled.sock "\$@"
+EOF
+  chmod +x /app/bin/tailscale
+
   bash -c "/app/bin/tailscale up --authkey=$TAILSCALE_AUTHKEY --hostname=$TAILSCALE_HOSTNAME $TAILSCALE_EXTRA_ARGS"
 
   export ALL_PROXY=socks5://localhost:"$TAILSCALE_PROXY_PORT"
